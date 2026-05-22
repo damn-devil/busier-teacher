@@ -9,7 +9,7 @@ load_dotenv()
 
 class Database:
     def __init__(self):
-        self.conn = psycopg2.connect(os.getenv("DATABASE_URL"), sslmode="require")
+        self.conn = psycopg2.connect(os.getenv("DATABASE_URL"), sslmode="prefer")
         self.conn.autocommit = True
 
     def _dict_row(self, row, columns):
