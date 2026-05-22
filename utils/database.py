@@ -8,6 +8,10 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
+
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -15,16 +19,21 @@ SUPABASE_HEADERS = {
     "Prefer": "return=representation",
 }
 
+
 class Database:
     def _request(self, method, table, params=None, data=None):
         url = f"{SUPABASE_URL}/rest/v1/{table}"
         headers = SUPABASE_HEADERS.copy()
         if method == "PATCH":
             headers["Prefer"] = "return=minimal"
-        resp = requests.request(method, url, headers=headers, params=params, json=data)
-        if resp.status_code >= 400:
-            print(f"Supabase error {resp.status_code}: {resp.text}")
-        return resp
+        try:
+            resp = requests.request(method, url, headers=headers, params=params, json=data, timeout=15)
+            if resp.status_code >= 400:
+                print(f"Supabase error {resp.status_code}: {resp.text}")
+            return resp
+        except requests.RequestException as e:
+            print(f"Supabase request failed: {e}")
+            return None
 
     def save_teacher_settings(self, chat_id: int, teacher_url_id: str,
                               teacher_name: str = None,
@@ -43,6 +52,8 @@ class Database:
             "telegram_chat_id": f"eq.{chat_id}",
             "select": "*",
         })
+        if resp is None:
+            return None
         rows = resp.json() if resp.status_code == 200 else []
         data = rows[0] if rows else None
         if data:
@@ -59,12 +70,16 @@ class Database:
 
     def get_total_teachers(self) -> int:
         resp = self._request("GET", "teachers", params={"select": "telegram_chat_id"})
+        if resp is None:
+            return 0
         return len(resp.json()) if resp.status_code == 200 else 0
 
     def get_all_teachers(self):
         resp = self._request("GET", "teachers", params={
             "select": "telegram_chat_id,teacher_url_id,teacher_name,department,position",
         })
+        if resp is None:
+            return []
         return resp.json() if resp.status_code == 200 else []
 
     get_active_teachers = get_all_teachers
@@ -81,6 +96,8 @@ class Database:
             "teacher_url_id": f"eq.{teacher_url_id}",
             "select": "schedule_data",
         })
+        if resp is None:
+            return None
         rows = resp.json() if resp.status_code == 200 else []
         return rows[0]["schedule_data"] if rows else None
 
