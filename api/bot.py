@@ -209,7 +209,7 @@ class ScheduleBot:
             await update.message.reply_text("❌ Сначала установите преподавателя: `/set_teacher 12345`", parse_mode='Markdown')
             return
         
-        schedule_data = self.db.get_schedule(settings['teacher_id'])
+        schedule_data = self.db.get_schedule(settings['teacher_url_id'])
         if not schedule_data:
             await update.message.reply_text("❌ Расписание не найдено")
             return
@@ -242,7 +242,7 @@ class ScheduleBot:
             await update.message.reply_text("❌ Сначала установите преподавателя: `/set_teacher 12345`", parse_mode='Markdown')
             return
         
-        schedule_data = self.db.get_schedule(settings['teacher_id'])
+        schedule_data = self.db.get_schedule(settings['teacher_url_id'])
         if not schedule_data:
             await update.message.reply_text("❌ Расписание не найдено")
             return
@@ -452,6 +452,7 @@ def webhook():
     except Exception as e:
         print(f"Webhook error: {e}")
         return 'Error', 500
+
 @app.route('/schedule', methods=['GET'])
 def schedule_route():
     """Проверка работы бота"""
