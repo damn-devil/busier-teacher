@@ -233,40 +233,41 @@ class BsuirAPI:
         cw = self.get_current_week()
         week_label = "числитель" if cw == 1 else "знаменатель"
 
-        message = f"📅 Расписание группы {parsed['group_name']} на неделю\n"
-        message += f"🏛 {parsed['faculty']} | {parsed['course']} курс\n"
-        message += f"📌 Неделя {cw} ({week_label})\n\n"
+        parts = [f"📅 Расписание группы {parsed['group_name']} на неделю"]
+        course_str = f" | {parsed['course']} курс" if parsed.get('course') else ""
+        parts.append(f"🏛 {parsed['faculty']}{course_str}")
+        parts.append(f"📌 Неделя {cw} ({week_label})")
 
         for day in WEEKDAYS_ORDER:
             day_schedule = parsed['schedules'].get(day, [])
             day_schedule = self._filter_by_week(day_schedule, cw)
-            message += f"**{day}:**\n"
+
+            parts.append("------------------------------")
+            parts.append(f"{day}:")
 
             if not day_schedule:
-                message += "    Пар нет 🎉\n"
+                parts.append("Пар нет 🎉")
             else:
                 for i, lesson in enumerate(day_schedule, 1):
                     start_time = lesson.get('startLessonTime', '?:?')
                     subject = lesson.get('subject', 'Не указано')
 
-                    auditories = lesson.get('auditories', [])
-                    auditory = ", ".join(auditories) if auditories else ''
-
                     less_type = lesson.get('lessonTypeAbbrev', '')
                     less_type_full = LESSON_TYPES.get(less_type, less_type)
+
+                    auditories = lesson.get('auditories', [])
+                    auditory = ", ".join(auditories) if auditories else ''
 
                     groups = lesson.get('studentGroups', [])
                     group_names = ", ".join(g.get("name", "") for g in groups) if groups else ""
 
-                    message += f"    {i}. {start_time} - {subject}"
+                    line = f"{i}. {start_time} - {subject}"
                     if less_type_full:
-                        message += f" ({less_type_full})"
+                        line += f" ({less_type_full})"
+                    parts.append(line)
                     if auditory:
-                        message += f" [{auditory}]"
+                        parts.append(auditory)
                     if group_names:
-                        message += f" 👥 {group_names}"
-                    message += "\n"
+                        parts.append(f"👥 {group_names}")
 
-            message += "\n"
-
-        return message
+        return "\n".join(parts)
