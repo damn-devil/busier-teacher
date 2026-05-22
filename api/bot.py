@@ -34,30 +34,27 @@ class ScheduleBot:
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
-        welcome_text = """
-👨‍🏫 *Бот расписания БГУИР для преподавателей*
-
-*Основные команды:*
-/schedule - Расписание на сегодня
-/schedule_tomorrow - На завтра  
-/next_lesson - Следующая пара
-/current_lesson - Текущая пара
-/week_schedule - На всю неделю
-/set_teacher - Установить преподавателя
-
-*Дополнительно:*
-/help - Помощь
-/stats - Статистика зарегистрированных преподавателей
-
-🔔 *Авто-уведомления:* 
-• Утреннее расписание (7:00)
-• За 10 мин до пары
-• За 5 мин до конца парy
-• О начале/конце пары
-• На перерыве (пятиминутка в середине пары)
-        """
+        welcome_text = (
+            "расписания БГУИР для преподавателей\n\n"
+            "Основные команды:\n"
+            "/schedule - Расписание на сегодня\n"
+            "/schedule_tomorrow - На завтра\n"
+            "/next_lesson - Следующая пара\n"
+            "/current_lesson - Текущая пара\n"
+            "/week_schedule - На всю неделю\n"
+            "/set_teacher - Установить преподавателя\n\n"
+            "Дополнительно:\n"
+            "/help - Помощь\n"
+            "/stats - Статистика\n\n"
+            "🔔 Авто-уведомления:\n"
+            "• Утреннее расписание (7:00)\n"
+            "• За 10 мин до пары\n"
+            "• За 5 мин до конца пары\n"
+            "• О начале/конце пары\n"
+            "• На перерыве (пятиминутка в середине пары)"
+        )
         
-        await update.message.reply_text(welcome_text, parse_mode='Markdown')
+        await update.message.reply_text(welcome_text)
     
     async def set_teacher(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Установить ID преподавателя"""
