@@ -2,6 +2,7 @@ from flask import Flask, jsonify
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import os
+import sys
 import threading
 import time
 import requests
@@ -245,6 +246,8 @@ def home():
     return jsonify({"status": "running"})
 
 
-threading.Thread(target=lambda: app.run(host="0.0.0.0", port=3000, debug=False), daemon=True).start()
-threading.Thread(target=run_scheduler, daemon=True).start()
-run_bot()
+if __name__ == "__main__":
+    PORT = int(os.getenv("PORT", 3000))
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=PORT, debug=False), daemon=True).start()
+    threading.Thread(target=run_scheduler, daemon=True).start()
+    run_bot()
