@@ -440,17 +440,18 @@ def setup_bot():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Webhook для Telegram"""
-    if application is None:
-        setup_bot()
-    
     try:
         update = Update.de_json(request.get_json(), application.bot)
-        asyncio.run(application.process_update(update))
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(application.process_update(update))
+        finally:
+            loop.close()
         return 'OK'
     except Exception as e:
         print(f"Webhook error: {e}")
         return 'Error', 500
-
 @app.route('/schedule', methods=['GET'])
 def schedule_route():
     """Проверка работы бота"""
