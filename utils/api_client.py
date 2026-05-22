@@ -28,9 +28,12 @@ LESSON_TYPES = {
     "ЗЧ": "Зачёт",
 }
 
+
 class BsuirAPI:
     def __init__(self):
         self.base_url = "https://iis.bsuir.by/api/v1"
+        self._current_week = None
+        self._current_week_ts = 0
 
     def get_schedule(self, url_id=None, group_number=None):
         try:
@@ -52,6 +55,41 @@ class BsuirAPI:
         except Exception as e:
             print(f"Error getting schedule: {e}")
             return None
+
+    def get_current_week(self):
+        now = datetime.now(MINSK_TZ).timestamp()
+        if self._current_week is not None and now - self._current_week_ts < 3600:
+            return self._current_week
+        try:
+            resp = requests.get(f"{self.base_url}/schedule/current-week", timeout=10)
+            if resp.status_code == 200:
+                val = resp.text.strip()
+                self._current_week = int(val)
+                self._current_week_ts = now
+                return self._current_week
+        except Exception as e:
+            print(f"Error getting current week: {e}")
+        return 1
+
+    def get_auditories(self):
+        try:
+            resp = requests.get(f"{self.base_url}/auditories", timeout=10)
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception as e:
+            print(f"Error getting auditories: {e}")
+        return []
+
+    @staticmethod
+    def _filter_by_week(lessons, current_week):
+        if not lessons:
+            return []
+        result = []
+        for lesson in lessons:
+            wn = lesson.get("weekNumber")
+            if wn is None or len(wn) == 0 or current_week in wn:
+                result.append(lesson)
+        return result
 
     def parse_schedule_data(self, schedule_data):
         if not schedule_data:
@@ -108,8 +146,15 @@ class BsuirAPI:
             return None
         return parsed['schedules'].get(day_ru, [])
 
+    def _day_lessons_filtered(self, schedule_data, day_ru):
+        lessons = self._day_lessons(schedule_data, day_ru)
+        if not lessons:
+            return []
+        cw = self.get_current_week()
+        return self._filter_by_week(lessons, cw)
+
     def get_today_schedule(self, schedule_data):
-        return self._day_lessons(schedule_data, self._today_name_ru())
+        return self._day_lessons_filtered(schedule_data, self._today_name_ru())
 
     def get_tomorrow_schedule(self, schedule_data):
         today_ru = self._today_name_ru()
@@ -118,7 +163,7 @@ class BsuirAPI:
         except ValueError:
             return []
         tomorrow_ru = WEEKDAYS_ORDER[(idx + 1) % len(WEEKDAYS_ORDER)]
-        return self._day_lessons(schedule_data, tomorrow_ru)
+        return self._day_lessons_filtered(schedule_data, tomorrow_ru)
 
     def get_current_lesson(self, schedule_data):
         today_schedule = self.get_today_schedule(schedule_data)
@@ -185,11 +230,16 @@ class BsuirAPI:
         if not parsed:
             return "❌ Ошибка обработки расписания"
 
+        cw = self.get_current_week()
+        week_label = "числитель" if cw == 1 else "знаменатель"
+
         message = f"📅 Расписание группы {parsed['group_name']} на неделю\n"
-        message += f"🏛 {parsed['faculty']} | {parsed['course']} курс\n\n"
+        message += f"🏛 {parsed['faculty']} | {parsed['course']} курс\n"
+        message += f"📌 Неделя {cw} ({week_label})\n\n"
 
         for day in WEEKDAYS_ORDER:
             day_schedule = parsed['schedules'].get(day, [])
+            day_schedule = self._filter_by_week(day_schedule, cw)
             message += f"**{day}:**\n"
 
             if not day_schedule:
