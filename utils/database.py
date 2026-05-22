@@ -38,13 +38,15 @@ class Database:
     def save_teacher_settings(self, chat_id: int, teacher_url_id: str,
                               teacher_name: str = None,
                               department: str = None,
-                              position: str = None):
+                              position: str = None,
+                              username: str = None):
         self._request("POST", "teachers", params={"on_conflict": "telegram_chat_id"}, data=[{
             "telegram_chat_id": chat_id,
             "teacher_url_id": teacher_url_id,
             "teacher_name": teacher_name,
             "department": department,
             "position": position,
+            "username": username,
         }])
 
     def get_teacher_settings(self, chat_id: int):
@@ -76,7 +78,7 @@ class Database:
 
     def get_all_teachers(self):
         resp = self._request("GET", "teachers", params={
-            "select": "telegram_chat_id,teacher_url_id,teacher_name,department,position",
+            "select": "telegram_chat_id,teacher_url_id,teacher_name,department,position,username",
         })
         if resp is None:
             return []
