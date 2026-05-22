@@ -30,7 +30,7 @@ class ScheduleBot:
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (
-            "👨‍🏫 Добро пожаловать в бот расписания БГУИР!\n\n"
+            "Расписания БГУИР!\n\n"
             "Просто отправьте свой ID преподавателя, "
             "и я начну присылать уведомления о парах.\n\n"
             "Пример: отправьте *s-nesterenkov*"
@@ -185,6 +185,11 @@ class ScheduleBot:
             return
 
         msg = self.api.format_lesson_info(lesson, prefix="🎯")
+        now = datetime.now(MINSK_TZ)
+        now_min = now.hour * 60 + now.minute
+        eh, em = parse_time(lesson.get("endLessonTime", ""))
+        remaining = eh * 60 + em - now_min
+        msg += f"\n\n⏳ До конца: {remaining} мин."
         await update.message.reply_text(f"🎯 Текущая пара\n\n{msg}", parse_mode="Markdown")
 
     async def next_lesson(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -209,6 +214,11 @@ class ScheduleBot:
             return
 
         msg = self.api.format_lesson_info(lesson, prefix="➡️")
+        now = datetime.now(MINSK_TZ)
+        now_min = now.hour * 60 + now.minute
+        sh, sm = parse_time(lesson.get("startLessonTime", ""))
+        until = sh * 60 + sm - now_min
+        msg += f"\n\n⏳ Начало через: {until} мин."
         await update.message.reply_text(f"➡️ Следующая пара\n\n{msg}", parse_mode="Markdown")
 
     async def stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
