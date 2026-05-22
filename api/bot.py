@@ -416,6 +416,7 @@ def setup_bot():
     
     bot = Bot(token=bot_token)
     application = Application.builder().token(bot_token).updater(None).build()
+    asyncio.run(application.initialize())
     
     schedule_bot = ScheduleBot()
     
