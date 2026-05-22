@@ -98,7 +98,10 @@ class ScheduleBot:
             return
 
         now_minsk = datetime.now(MINSK_TZ)
-        msg = f"📚 Расписание на сегодня ({now_minsk.strftime('%d.%m.%Y')})\n\n"
+        cw = self.api.get_current_week()
+        week_label = "числитель" if cw == 1 else "знаменатель"
+        msg = f"📚 Расписание на сегодня ({now_minsk.strftime('%d.%m.%Y')})\n"
+        msg += f"📌 {cw}-я неделя ({week_label})\n\n"
         for i, lesson in enumerate(today, 1):
             msg += self.api.format_lesson_info(lesson, lesson_number=i) + "\n\n"
         await update.message.reply_text(msg, parse_mode="Markdown")
@@ -133,7 +136,10 @@ class ScheduleBot:
 
         now_minsk = datetime.now(MINSK_TZ)
         tomorrow_date = now_minsk + timedelta(days=1)
-        msg = f"📚 Расписание на завтра ({tomorrow_date.strftime('%d.%m.%Y')})\n\n"
+        cw = self.api.get_current_week()
+        week_label = "числитель" if cw == 1 else "знаменатель"
+        msg = f"📚 Расписание на завтра ({tomorrow_date.strftime('%d.%m.%Y')})\n"
+        msg += f"📌 {cw}-я неделя ({week_label})\n\n"
         for i, lesson in enumerate(tomorrow, 1):
             msg += self.api.format_lesson_info(lesson, lesson_number=i) + "\n\n"
         await update.message.reply_text(msg, parse_mode="Markdown")
@@ -292,7 +298,9 @@ def run_scheduler():
                 fh, fm = parse_time(first.get("startLessonTime", ""))
                 first_start_min = fh * 60 + fm
                 if now_ts == first_start_min - 30:
-                    msg = f"🌅 Доброе утро! Через 30 минут начнутся пары.\n\n📚 Расписание на сегодня:\n\n"
+                    cw = api.get_current_week()
+                    week_label = "числитель" if cw == 1 else "знаменатель"
+                    msg = f"🌅 Доброе утро! Через 30 минут начнутся пары.\n📌 {cw}-я неделя ({week_label})\n\n📚 Расписание на сегодня:\n\n"
                     for j, lesson in enumerate(lessons, 1):
                         msg += api.format_lesson_info(lesson, lesson_number=j) + "\n\n"
                     send_tg(chat_id, msg, parse_mode="Markdown")
