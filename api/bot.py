@@ -325,10 +325,29 @@ def run_scheduler():
                     start_min = sh * 60 + sm
                     end_min = eh * 60 + em
 
+                    total_min = end_min - start_min
+
                     # — Начало пары —
                     if now_ts == start_min:
                         info = api.format_lesson_info(lesson, lesson_number=i + 1, prefix="🎯")
-                        send_tg(chat_id, f"🎯 Пара началась!\n\n{info}", parse_mode="Markdown")
+                        send_tg(
+                            chat_id,
+                            f"🎯 Пара началась!\n\n{info}\n\n⏳ До конца: {total_min} мин.",
+                            parse_mode="Markdown",
+                        )
+
+                    # — Перерыв 5 минут внутри пары (через 40 мин от начала) —
+                    break_start = start_min + 40
+                    if break_start < end_min and now_ts == break_start:
+                        remaining = end_min - (start_min + 45)
+                        send_tg(
+                            chat_id,
+                            f"☕ Перерыв 5 минут\n\nДо конца пары осталось {remaining} мин.",
+                        )
+
+                    # — За 5 мин до конца пары —
+                    if now_ts == end_min - 5:
+                        send_tg(chat_id, f"⏰ До конца пары 5 минут!")
 
                     # — 5 минут до следующей пары (окончание перемены) —
                     if i > 0:
@@ -378,7 +397,7 @@ def run_bot():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, schedule_bot.handle_text))
 
     print("🤖 Bot starting polling...")
-    application.run_polling(close_loop=False)
+    application.run_polling(close_loop=False, drop_pending_updates=True)
 
 
 @app.route("/")
