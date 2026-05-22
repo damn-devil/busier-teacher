@@ -86,6 +86,11 @@ class Database:
 
     get_active_teachers = get_all_teachers
 
+    def delete_teacher(self, chat_id: int):
+        self._request("DELETE", "teachers", params={
+            "telegram_chat_id": f"eq.{chat_id}",
+        })
+
     def save_schedule(self, teacher_url_id: str, schedule_data: dict):
         self._request("POST", "teacher_schedules", params={"on_conflict": "teacher_url_id"}, data=[{
             "teacher_url_id": teacher_url_id,
