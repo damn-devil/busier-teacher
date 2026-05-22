@@ -235,6 +235,13 @@ class ScheduleBot:
 
         await update.message.reply_text(msg)
 
+    async def reset(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        self.db.delete_teacher(update.effective_chat.id)
+        await update.message.reply_text(
+            "🔄 Регистрация сброшена!\n\n"
+            "Отправьте новый ID преподавателя, чтобы зарегистрироваться заново."
+        )
+
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "🆘 Помощь\n\n"
@@ -244,6 +251,7 @@ class ScheduleBot:
             "/week — расписание на неделю\n"
             "/current — текущая пара\n"
             "/next — следующая пара\n"
+            "/reset — сбросить регистрацию\n"
             "/stats — статистика (админ)\n"
             "/help — помощь"
         )
@@ -364,6 +372,7 @@ def run_bot():
     application.add_handler(CommandHandler("week", schedule_bot.week_schedule))
     application.add_handler(CommandHandler("current", schedule_bot.current_lesson))
     application.add_handler(CommandHandler("next", schedule_bot.next_lesson))
+    application.add_handler(CommandHandler("reset", schedule_bot.reset))
     application.add_handler(CommandHandler("stats", schedule_bot.stats))
     application.add_handler(CommandHandler("help", schedule_bot.help_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, schedule_bot.handle_text))
