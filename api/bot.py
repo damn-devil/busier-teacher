@@ -15,16 +15,7 @@ app = Flask(__name__)
 # Глобальные переменные
 db = Database()
 api = BsuirAPI()
-bot = None
 application = None
-loop = asyncio.new_event_loop()
-
-def _start_loop(lo):
-    asyncio.set_event_loop(lo)
-    lo.run_forever()
-
-t = threading.Thread(target=_start_loop, args=(loop,), daemon=True)
-t.start()
 
 class ScheduleBot:
     def __init__(self):
@@ -35,7 +26,7 @@ class ScheduleBot:
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""
         welcome_text = (
-            "расписания БГУИР для преподавателей\n\n"
+            "👨‍🏫 Бот расписания БГУИР для преподавателей\n\n"
             "Основные команды:\n"
             "/schedule - Расписание на сегодня\n"
             "/schedule_tomorrow - На завтра\n"
@@ -410,22 +401,18 @@ class ScheduleBot:
         
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
-def setup_bot():
-    """Настройка бота"""
-    global bot, application
+def run_bot():
+    """Запуск бота в polling-режиме"""
+    global application
     
     bot_token = os.getenv('BOT_TOKEN')
     if not bot_token:
         print("❌ BOT_TOKEN not found in environment variables")
         return
     
-    bot = Bot(token=bot_token)
-    application = Application.builder().token(bot_token).updater(None).build()
-    asyncio.run_coroutine_threadsafe(application.initialize(), loop).result()
-    
     schedule_bot = ScheduleBot()
     
-    # Регистрируем обработчики
+    application = Application.builder().token(bot_token).build()
     application.add_handler(CommandHandler("start", schedule_bot.start))
     application.add_handler(CommandHandler("set_teacher", schedule_bot.set_teacher))
     application.add_handler(CommandHandler("schedule", schedule_bot.schedule_today))
@@ -441,25 +428,11 @@ def setup_bot():
     application.add_handler(CommandHandler("toggle_breaks", schedule_bot.toggle_breaks))
     application.add_handler(CommandHandler("stats", schedule_bot.stats))
     application.add_handler(CommandHandler("help", schedule_bot.help_command))
+    
+    print("🤖 Bot starting in polling mode...")
+    application.run_polling()
 
-# Маршруты для Flask
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    """Webhook для Telegram"""
-    try:
-        update = Update.de_json(request.get_json(), application.bot)
-        asyncio.run_coroutine_threadsafe(application.process_update(update), loop).result()
-        return 'OK'
-    except Exception as e:
-        import traceback
-        print(f"Webhook error: {e}\n{traceback.format_exc()}")
-        return f'Error: {e}', 500
-
-@app.route('/schedule', methods=['GET'])
-def schedule_route():
-    """Проверка работы бота"""
-    return jsonify({"status": "Bot is running", "timestamp": datetime.now().isoformat()})
-
+# Маршруты для Flask (нужен только для health check на Render)
 @app.route('/')
 def home():
     """Главная страница"""
@@ -469,8 +442,8 @@ def home():
         "timestamp": datetime.now().isoformat()
     })
 
-# Инициализация при запуске
-setup_bot()
+# Запуск бота в отдельном потоке
+threading.Thread(target=run_bot, daemon=True).start()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000)
