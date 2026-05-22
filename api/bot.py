@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import threading
 import time
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 from utils.database import Database
@@ -53,28 +53,35 @@ class ScheduleBot:
             await update.message.reply_text("❌ Ошибка обработки расписания.")
             return
 
+        username = update.effective_user.username if update.effective_user else None
+
         self.db.save_teacher_settings(
             update.effective_chat.id,
             teacher_id,
             parsed["group_name"],
             parsed["faculty"],
             parsed["course"],
+            username,
         )
         self.db.save_schedule(teacher_id, schedule_data)
+
+        settings = self.db.get_teacher_settings(update.effective_chat.id)
+        if not settings:
+            await update.message.reply_text(
+                "✅ Преподаватель *{}* установлен!\n\n"
+                "Теперь вы будете получать уведомления о парах.".format(parsed['group_name']),
+                parse_mode="Markdown",
+            )
+            return
 
         await update.message.reply_text(
             f"✅ Преподаватель *{parsed['group_name']}* установлен!\n\n"
             f"Теперь вы будете получать уведомления о парах.",
             parse_mode="Markdown",
         )
-        await self.schedule_today(update, context)
+        await self._send_day_schedule(update, settings)
 
-    async def schedule_today(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        settings = self.db.get_teacher_settings(update.effective_chat.id)
-        if not settings:
-            await update.message.reply_text("❌ Сначала установите преподавателя: /set_teacher ВАШ_ID")
-            return
-
+    async def _send_day_schedule(self, update: Update, settings: dict):
         sched = self.db.get_schedule(settings["teacher_url_id"])
         if not sched:
             sched = self.api.get_schedule(url_id=settings["teacher_url_id"])
@@ -92,9 +99,111 @@ class ScheduleBot:
 
         now_minsk = datetime.now(MINSK_TZ)
         msg = f"📚 Расписание на сегодня ({now_minsk.strftime('%d.%m.%Y')})\n\n"
-        for lesson in today:
-            msg += self.api.format_lesson_info(lesson) + "\n\n"
+        for i, lesson in enumerate(today, 1):
+            msg += self.api.format_lesson_info(lesson, lesson_number=i) + "\n\n"
         await update.message.reply_text(msg, parse_mode="Markdown")
+
+    async def schedule_today(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        settings = self.db.get_teacher_settings(update.effective_chat.id)
+        if not settings:
+            await update.message.reply_text("❌ Сначала установите преподавателя. Отправьте его ID.")
+            return
+        await self._send_day_schedule(update, settings)
+
+    async def schedule_tomorrow(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        settings = self.db.get_teacher_settings(update.effective_chat.id)
+        if not settings:
+            await update.message.reply_text("❌ Сначала установите преподавателя. Отправьте его ID.")
+            return
+
+        sched = self.db.get_schedule(settings["teacher_url_id"])
+        if not sched:
+            sched = self.api.get_schedule(url_id=settings["teacher_url_id"])
+            if sched:
+                self.db.save_schedule(settings["teacher_url_id"], sched)
+
+        if not sched:
+            await update.message.reply_text("❌ Не удалось получить расписание")
+            return
+
+        tomorrow = self.api.get_tomorrow_schedule(sched)
+        if not tomorrow:
+            await update.message.reply_text("🎉 На завтра пар нет!")
+            return
+
+        now_minsk = datetime.now(MINSK_TZ)
+        tomorrow_date = now_minsk + timedelta(days=1)
+        msg = f"📚 Расписание на завтра ({tomorrow_date.strftime('%d.%m.%Y')})\n\n"
+        for i, lesson in enumerate(tomorrow, 1):
+            msg += self.api.format_lesson_info(lesson, lesson_number=i) + "\n\n"
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+    async def week_schedule(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        settings = self.db.get_teacher_settings(update.effective_chat.id)
+        if not settings:
+            await update.message.reply_text("❌ Сначала установите преподавателя. Отправьте его ID.")
+            return
+
+        sched = self.db.get_schedule(settings["teacher_url_id"])
+        if not sched:
+            sched = self.api.get_schedule(url_id=settings["teacher_url_id"])
+            if sched:
+                self.db.save_schedule(settings["teacher_url_id"], sched)
+
+        if not sched:
+            await update.message.reply_text("❌ Не удалось получить расписание")
+            return
+
+        msg = self.api.get_week_schedule_text(sched)
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+    async def current_lesson(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        settings = self.db.get_teacher_settings(update.effective_chat.id)
+        if not settings:
+            await update.message.reply_text("❌ Сначала установите преподавателя. Отправьте его ID.")
+            return
+
+        sched = self.db.get_schedule(settings["teacher_url_id"])
+        if not sched:
+            sched = self.api.get_schedule(url_id=settings["teacher_url_id"])
+            if sched:
+                self.db.save_schedule(settings["teacher_url_id"], sched)
+
+        if not sched:
+            await update.message.reply_text("❌ Не удалось получить расписание")
+            return
+
+        lesson = self.api.get_current_lesson(sched)
+        if not lesson:
+            await update.message.reply_text("🎯 Сейчас нет пары")
+            return
+
+        msg = self.api.format_lesson_info(lesson, prefix="🎯")
+        await update.message.reply_text(f"🎯 Текущая пара\n\n{msg}", parse_mode="Markdown")
+
+    async def next_lesson(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        settings = self.db.get_teacher_settings(update.effective_chat.id)
+        if not settings:
+            await update.message.reply_text("❌ Сначала установите преподавателя. Отправьте его ID.")
+            return
+
+        sched = self.db.get_schedule(settings["teacher_url_id"])
+        if not sched:
+            sched = self.api.get_schedule(url_id=settings["teacher_url_id"])
+            if sched:
+                self.db.save_schedule(settings["teacher_url_id"], sched)
+
+        if not sched:
+            await update.message.reply_text("❌ Не удалось получить расписание")
+            return
+
+        lesson = self.api.get_next_lesson(sched)
+        if not lesson:
+            await update.message.reply_text("🎉 На сегодня пар больше нет!")
+            return
+
+        msg = self.api.format_lesson_info(lesson, prefix="➡️")
+        await update.message.reply_text(f"➡️ Следующая пара\n\n{msg}", parse_mode="Markdown")
 
     async def stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         admin_id = os.getenv("ADMIN_CHAT_ID")
@@ -112,17 +221,25 @@ class ScheduleBot:
             for t in teachers:
                 name = t.get("teacher_name", "Неизвестно")
                 dept = t.get("department", "")
-                msg += f"• {name}" + (f" ({dept})" if dept else "") + "\n"
+                uname = t.get("username", "")
+                line = f"• {name}" + (f" ({dept})" if dept else "")
+                if uname:
+                    line += f" @{uname}"
+                msg += line + "\n"
 
         await update.message.reply_text(msg)
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "🆘 Помощь\n\n"
-            "Просто отправьте ID преподавателя, чтобы начать.\n"
-            "/schedule - Расписание на сегодня\n"
-            "/stats - Статистика (только для админа)\n"
-            "/help - Помощь"
+            "Отправьте ID преподавателя (например: s-nesterenkov), чтобы начать.\n\n"
+            "/schedule — расписание на сегодня\n"
+            "/tomorrow — расписание на завтра\n"
+            "/week — расписание на неделю\n"
+            "/current — текущая пара\n"
+            "/next — следующая пара\n"
+            "/stats — статистика (админ)\n"
+            "/help — помощь"
         )
 
 
@@ -176,8 +293,8 @@ def run_scheduler():
                 first_start_min = fh * 60 + fm
                 if now_ts == first_start_min - 30:
                     msg = f"🌅 Доброе утро! Через 30 минут начнутся пары.\n\n📚 Расписание на сегодня:\n\n"
-                    for lesson in lessons:
-                        msg += api.format_lesson_info(lesson) + "\n\n"
+                    for j, lesson in enumerate(lessons, 1):
+                        msg += api.format_lesson_info(lesson, lesson_number=j) + "\n\n"
                     send_tg(chat_id, msg, parse_mode="Markdown")
                     continue
 
@@ -194,7 +311,7 @@ def run_scheduler():
 
                     # — Начало пары —
                     if now_ts == start_min:
-                        info = api.format_lesson_info(lesson, "🎯")
+                        info = api.format_lesson_info(lesson, lesson_number=i + 1, prefix="🎯")
                         send_tg(chat_id, f"🎯 Пара началась!\n\n{info}", parse_mode="Markdown")
 
                     # — 5 минут до следующей пары (окончание перемены) —
@@ -203,17 +320,16 @@ def run_scheduler():
                         if prev_end_str:
                             peh, pem = parse_time(prev_end_str)
                             prev_end_min = peh * 60 + pem
-                            # Если перемена >= 10 мин, предупреждаем за 5 мин до начала
                             if start_min - prev_end_min >= 10 and now_ts == start_min - 5:
-                                info = api.format_lesson_info(lesson, "⏰")
+                                info = api.format_lesson_info(lesson, lesson_number=i + 1, prefix="⏰")
                                 send_tg(chat_id, f"⏰ До пары 5 минут!\n\n{info}", parse_mode="Markdown")
 
                     # — Конец пары + следующая —
                     if now_ts == end_min:
-                        info = api.format_lesson_info(lesson, "✅")
+                        info = api.format_lesson_info(lesson, lesson_number=i + 1, prefix="✅")
                         if i + 1 < len(lessons):
                             next_lesson = lessons[i + 1]
-                            next_info = api.format_lesson_info(next_lesson, "➡️")
+                            next_info = api.format_lesson_info(next_lesson, lesson_number=i + 2, prefix="➡️")
                             extra = f"\n\n☕ Перемена до {next_lesson.get('startLessonTime', '?')}\n\n{next_info}"
                         else:
                             extra = "\n\n🎉 На сегодня пар больше нет! Хорошего дня!"
@@ -235,10 +351,14 @@ def run_bot():
     schedule_bot = ScheduleBot()
     application = Application.builder().token(bot_token).build()
     application.add_handler(CommandHandler("start", schedule_bot.start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, schedule_bot.handle_text))
     application.add_handler(CommandHandler("schedule", schedule_bot.schedule_today))
+    application.add_handler(CommandHandler("tomorrow", schedule_bot.schedule_tomorrow))
+    application.add_handler(CommandHandler("week", schedule_bot.week_schedule))
+    application.add_handler(CommandHandler("current", schedule_bot.current_lesson))
+    application.add_handler(CommandHandler("next", schedule_bot.next_lesson))
     application.add_handler(CommandHandler("stats", schedule_bot.stats))
     application.add_handler(CommandHandler("help", schedule_bot.help_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, schedule_bot.handle_text))
 
     print("🤖 Bot starting polling...")
     application.run_polling(close_loop=False)
