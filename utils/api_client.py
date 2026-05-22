@@ -255,11 +255,16 @@ class BsuirAPI:
                     less_type = lesson.get('lessonTypeAbbrev', '')
                     less_type_full = LESSON_TYPES.get(less_type, less_type)
 
+                    groups = lesson.get('studentGroups', [])
+                    group_names = ", ".join(g.get("name", "") for g in groups) if groups else ""
+
                     message += f"    {i}. {start_time} - {subject}"
                     if less_type_full:
                         message += f" ({less_type_full})"
                     if auditory:
                         message += f" [{auditory}]"
+                    if group_names:
+                        message += f" 👥 {group_names}"
                     message += "\n"
 
             message += "\n"
