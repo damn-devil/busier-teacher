@@ -430,7 +430,7 @@ def run_bot():
     application.add_handler(CommandHandler("help", schedule_bot.help_command))
     
     print("🤖 Bot starting in polling mode...")
-    application.run_polling()
+    application.run_polling(close_loop=False)
 
 # Маршруты для Flask (нужен только для health check на Render)
 @app.route('/')
@@ -442,8 +442,8 @@ def home():
         "timestamp": datetime.now().isoformat()
     })
 
-# Запуск бота в отдельном потоке
-threading.Thread(target=run_bot, daemon=True).start()
+# Запуск Flask в отдельном потоке
+threading.Thread(target=lambda: app.run(host='0.0.0.0', port=3000, debug=False), daemon=True).start()
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3000)
+# Бот работает в главном потоке
+run_bot()
