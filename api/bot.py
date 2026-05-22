@@ -17,6 +17,8 @@ db = Database()
 api = BsuirAPI()
 bot = None
 application = None
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
 class ScheduleBot:
     def __init__(self):
@@ -416,7 +418,7 @@ def setup_bot():
     
     bot = Bot(token=bot_token)
     application = Application.builder().token(bot_token).updater(None).build()
-    asyncio.run(application.initialize())
+    loop.run_until_complete(application.initialize())
     
     schedule_bot = ScheduleBot()
     
@@ -443,7 +445,7 @@ def webhook():
     """Webhook для Telegram"""
     try:
         update = Update.de_json(request.get_json(), application.bot)
-        asyncio.run(application.process_update(update))
+        loop.run_until_complete(application.process_update(update))
         return 'OK'
     except Exception as e:
         import traceback
