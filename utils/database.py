@@ -1,45 +1,43 @@
 import os
+import json
 from datetime import datetime
-from supabase import create_client, Client
+import psycopg2
+import psycopg2.extras
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class Database:
     def __init__(self):
-        url: str = os.getenv("SUPABASE_URL")
-        key: str = os.getenv("SUPABASE_ANON_KEY")
-        if not url or not key:
-            raise RuntimeError("SUPABASE_URL и SUPABASE_ANON_KEY должны быть заданы")
-        self.supabase: Client = create_client(url, key)
+        self.conn = psycopg2.connect(os.getenv("DATABASE_URL"), sslmode="require")
+        self.conn.autocommit = True
 
-    # ------------------ Настройки преподавателя ------------------
+    def _dict_row(self, row, columns):
+        if not row:
+            return None
+        return dict(zip(columns, row))
+
     def save_teacher_settings(self, chat_id: int, teacher_url_id: str,
                               teacher_name: str = None,
                               department: str = None,
                               position: str = None):
-        """Создать или обновить запись преподавателя."""
-        data = {
-            "telegram_chat_id": chat_id,
-            "teacher_url_id": teacher_url_id,
-            "teacher_name": teacher_name,
-            "department": department,
-            "position": position,
-        }
-        self.supabase.table("teachers").upsert(
-            data,
-            on_conflict="telegram_chat_id"
-        ).execute()
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO teachers (telegram_chat_id, teacher_url_id, teacher_name, department, position, updated_at)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (telegram_chat_id) DO UPDATE SET
+                    teacher_url_id = EXCLUDED.teacher_url_id,
+                    teacher_name = EXCLUDED.teacher_name,
+                    department = EXCLUDED.department,
+                    position = EXCLUDED.position,
+                    updated_at = NOW()
+            """, (chat_id, teacher_url_id, teacher_name, department, position))
 
     def get_teacher_settings(self, chat_id: int):
-        resp = (
-            self.supabase.table("teachers")
-            .select("*")
-            .eq("telegram_chat_id", chat_id)
-            .single()
-            .execute()
-        )
-        data = resp.data if resp.data else None
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT * FROM teachers WHERE telegram_chat_id = %s", (chat_id,))
+            columns = [desc[0] for desc in cur.description]
+            data = self._dict_row(cur.fetchone(), columns)
         if data:
             data.setdefault("notifications_enabled", True)
             data.setdefault("morning_schedule", True)
@@ -48,45 +46,47 @@ class Database:
         return data
 
     def update_teacher_setting(self, chat_id: int, setting: str, value: bool):
-        self.supabase.table("teachers").update({setting: value}).eq(
-            "telegram_chat_id", chat_id
-        ).execute()
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE teachers SET {setting} = %s, updated_at = NOW() WHERE telegram_chat_id = %s",
+                (value, chat_id)
+            )
 
-    # ------------------ Статистика ------------------
     def get_total_teachers(self) -> int:
-        resp = self.supabase.table("teachers").select("telegram_chat_id", count="exact").execute()
-        return resp.count if hasattr(resp, 'count') else len(resp.data or [])
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM teachers")
+            return cur.fetchone()[0]
 
     def get_all_teachers(self):
-        resp = (
-            self.supabase.table("teachers")
-            .select("telegram_chat_id, teacher_url_id, teacher_name, department, position")
-            .execute()
-        )
-        return resp.data or []
+        with self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT telegram_chat_id, teacher_url_id, teacher_name, department, position FROM teachers"
+            )
+            return [dict(r) for r in cur.fetchall()]
 
     get_active_teachers = get_all_teachers
 
-    # ------------------ Расписание ------------------
     def save_schedule(self, teacher_url_id: str, schedule_data: dict):
-        self.supabase.table("teacher_schedules").upsert(
-            {
-                "teacher_url_id": teacher_url_id,
-                "schedule_data": schedule_data,
-                "updated_at": datetime.utcnow().isoformat()
-            },
-            on_conflict="teacher_url_id"
-        ).execute()
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO teacher_schedules (teacher_url_id, schedule_data, updated_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (teacher_url_id) DO UPDATE SET
+                    schedule_data = EXCLUDED.schedule_data,
+                    updated_at = EXCLUDED.updated_at
+            """, (teacher_url_id, json.dumps(schedule_data), datetime.utcnow().isoformat()))
 
     def get_schedule(self, teacher_url_id: str):
-        resp = (
-            self.supabase.table("teacher_schedules")
-            .select("schedule_data")
-            .eq("teacher_url_id", teacher_url_id)
-            .single()
-            .execute()
-        )
-        return resp.data["schedule_data"] if resp.data else None
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT schedule_data FROM teacher_schedules WHERE teacher_url_id = %s",
+                (teacher_url_id,)
+            )
+            row = cur.fetchone()
+        return row[0] if row else None
 
     def log_notification(self, chat_id: int, ntype: str, message: str):
         pass
+
+    def close(self):
+        self.conn.close()
