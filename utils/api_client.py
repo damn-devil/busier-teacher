@@ -2,6 +2,9 @@ import requests
 import json
 from datetime import datetime, timedelta
 import os
+import pytz
+
+MINSK_TZ = pytz.timezone("Europe/Minsk")
 
 class BsuirAPI:
     def __init__(self):
@@ -96,7 +99,7 @@ class BsuirAPI:
             'Sunday': 'Воскресенье'
         }
         
-        today_en = datetime.now().strftime("%A")
+        today_en = datetime.now(MINSK_TZ).strftime("%A")
         today_ru = weekdays_ru.get(today_en, today_en)
         
         return parsed['schedules'].get(today_ru, [])
@@ -107,7 +110,7 @@ class BsuirAPI:
         if not today_schedule:
             return None
             
-        now = datetime.now()
+        now = datetime.now(MINSK_TZ)
         current_time = now.strftime("%H:%M")
         
         for lesson in today_schedule:
@@ -125,7 +128,7 @@ class BsuirAPI:
         if not today_schedule:
             return None
             
-        now = datetime.now()
+        now = datetime.now(MINSK_TZ)
         current_time = now.strftime("%H:%M")
         
         for lesson in today_schedule:
@@ -144,27 +147,25 @@ class BsuirAPI:
         return today_schedule
     
     def format_lesson_info(self, lesson, prefix="📚"):
-        """Форматировать информацию о паре"""
         if not lesson:
             return ""
-            
         lesson_num = lesson.get('lessonNumber', '?')
         start_time = lesson.get('startLessonTime', '?:?')
         end_time = lesson.get('endLessonTime', '?:?')
         subject = lesson.get('subject', 'Не указано')
         lesson_type = lesson.get('lessonType', '')
         auditory = lesson.get('auditory', [''])[0] if lesson.get('auditory') else 'Не указана'
-        
-        employees = lesson.get('employee', [])
-        employee_name = employees[0].get('fullName', 'Не указан') if employees else 'Не указан'
-        
-        message = f"{prefix} Пара {lesson_num}. {start_time}-{end_time}\n"
-        message += f"📖 {subject}\n"
+        groups = lesson.get('studentGroup', [])
+        group_names = ", ".join(g.get("name", "") for g in groups) if groups else ""
+
+        message = f"{prefix} Пара {lesson_num}. {start_time}–{end_time}\n"
+        message += f"📖 {subject}"
         if lesson_type:
-            message += f"📝 {lesson_type}\n"
-        message += f"👨‍🏫 {employee_name}\n"
+            message += f" ({lesson_type})"
+        message += "\n"
+        if group_names:
+            message += f"👥 Группа: {group_names}\n"
         message += f"📍 {auditory}"
-        
         return message
     
     def get_week_schedule_text(self, schedule_data):
