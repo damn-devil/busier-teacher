@@ -231,12 +231,11 @@ class BsuirAPI:
             return "❌ Ошибка обработки расписания"
 
         cw = self.get_current_week()
-        week_label = "числитель" if cw == 1 else "знаменатель"
 
         parts = [f"📅 Расписание группы {parsed['group_name']} на неделю"]
         course_str = f" | {parsed['course']} курс" if parsed.get('course') else ""
         parts.append(f"🏛 {parsed['faculty']}{course_str}")
-        parts.append(f"📌 Неделя {cw} ({week_label})")
+        parts.append(f"📌 {cw}-я неделя")
 
         for day in WEEKDAYS_ORDER:
             day_schedule = parsed['schedules'].get(day, [])
