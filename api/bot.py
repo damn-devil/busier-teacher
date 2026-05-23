@@ -99,9 +99,8 @@ class ScheduleBot:
 
         now_minsk = datetime.now(MINSK_TZ)
         cw = self.api.get_current_week()
-        week_label = "числитель" if cw == 1 else "знаменатель"
         msg = f"📚 Расписание на сегодня ({now_minsk.strftime('%d.%m.%Y')})\n"
-        msg += f"📌 {cw}-я неделя ({week_label})\n\n"
+        msg += f"📌 {cw}-я неделя\n\n"
         for i, lesson in enumerate(today, 1):
             msg += self.api.format_lesson_info(lesson, lesson_number=i) + "\n\n"
         await update.message.reply_text(msg, parse_mode="Markdown")
@@ -137,9 +136,8 @@ class ScheduleBot:
         now_minsk = datetime.now(MINSK_TZ)
         tomorrow_date = now_minsk + timedelta(days=1)
         cw = self.api.get_current_week()
-        week_label = "числитель" if cw == 1 else "знаменатель"
         msg = f"📚 Расписание на завтра ({tomorrow_date.strftime('%d.%m.%Y')})\n"
-        msg += f"📌 {cw}-я неделя ({week_label})\n\n"
+        msg += f"📌 {cw}-я неделя\n\n"
         for i, lesson in enumerate(tomorrow, 1):
             msg += self.api.format_lesson_info(lesson, lesson_number=i) + "\n\n"
         await update.message.reply_text(msg, parse_mode="Markdown")
@@ -288,9 +286,33 @@ def parse_time(t_str):
 
 def run_scheduler():
     print("⏰ Scheduler started")
+    _sent = set()
+    _last_min = None
     while True:
         try:
             now = datetime.now(MINSK_TZ)
+            now_ts = now.hour * 60 + now.minute
+            if now_ts != _last_min:
+                _sent.clear()
+                _last_min = now_ts
+
+            def _send(chat_id, teacher_url_id, text, parse_mode=None, key=None):
+                if key is not None:
+                    dedup = (chat_id, key)
+                    if dedup in _sent:
+                        return
+                    _sent.add(dedup)
+                    if "_" in key and teacher_url_id:
+                        ntype, minute_str = key.rsplit("_", 1)
+                        try:
+                            minute = int(minute_str)
+                        except ValueError:
+                            minute = 0
+                        if db.notification_already_sent(teacher_url_id, ntype, minute):
+                            return
+                        db.mark_notification_sent(teacher_url_id, ntype, minute)
+                send_tg(chat_id, text, parse_mode)
+
             teachers = db.get_all_teachers()
 
             for t in teachers:
@@ -317,11 +339,10 @@ def run_scheduler():
                 first_start_min = fh * 60 + fm
                 if now_ts == first_start_min - 30:
                     cw = api.get_current_week()
-                    week_label = "числитель" if cw == 1 else "знаменатель"
-                    msg = f"🌅 Доброе утро! Через 30 минут начнутся пары.\n📌 {cw}-я неделя ({week_label})\n\n📚 Расписание на сегодня:\n\n"
+                    msg = f"🌅 Доброе утро! Через 30 минут начнутся пары.\n📌 {cw}-я неделя\n\n📚 Расписание на сегодня:\n\n"
                     for j, lesson in enumerate(lessons, 1):
                         msg += api.format_lesson_info(lesson, lesson_number=j) + "\n\n"
-                    send_tg(chat_id, msg, parse_mode="Markdown")
+                    _send(chat_id, teacher_id, msg, parse_mode="Markdown", key=f"alarm_{first_start_min - 30}")
                     continue
 
                 for i, lesson in enumerate(lessons):
@@ -340,24 +361,31 @@ def run_scheduler():
                     # — Начало пары —
                     if now_ts == start_min:
                         info = api.format_lesson_info(lesson, lesson_number=i + 1, prefix="🎯")
-                        send_tg(
-                            chat_id,
+                        _send(
+                            chat_id, teacher_id,
                             f"🎯 Пара началась!\n\n{info}\n\n⏳ До конца: {total_min} мин.",
                             parse_mode="Markdown",
+                            key=f"start_{start_min}",
                         )
 
                     # — Перерыв 5 минут внутри пары (через 40 мин от начала) —
                     break_start = start_min + 40
                     if break_start < end_min and now_ts == break_start:
                         remaining = end_min - (start_min + 45)
-                        send_tg(
-                            chat_id,
-                            f"☕ Перерыв 5 минут\n\nДо конца пары осталось {remaining} мин.",
+                        _send(chat_id, teacher_id, f"☕ Перерыв 5 минут", key=f"break_start_{start_min}")
+
+                    break_end = start_min + 45
+                    if break_end < end_min and now_ts == break_end:
+                        remaining = end_min - break_end
+                        _send(
+                            chat_id, teacher_id,
+                            f"☕ Перерыв окончен\n\nДо конца пары осталось {remaining} мин.",
+                            key=f"break_end_{start_min}",
                         )
 
                     # — За 5 мин до конца пары —
                     if now_ts == end_min - 5:
-                        send_tg(chat_id, f"⏰ До конца пары 5 минут!")
+                        _send(chat_id, teacher_id, f"⏰ До конца пары 5 минут!", key=f"end5_{end_min}")
 
                     # — 5 минут до следующей пары (окончание перемены) —
                     if i > 0:
@@ -367,7 +395,7 @@ def run_scheduler():
                             prev_end_min = peh * 60 + pem
                             if start_min - prev_end_min >= 10 and now_ts == start_min - 5:
                                 info = api.format_lesson_info(lesson, lesson_number=i + 1, prefix="⏰")
-                                send_tg(chat_id, f"⏰ До пары 5 минут!\n\n{info}", parse_mode="Markdown")
+                                _send(chat_id, teacher_id, f"⏰ До пары 5 минут!\n\n{info}", parse_mode="Markdown", key=f"next5_{start_min}")
 
                     # — Конец пары + следующая —
                     if now_ts == end_min:
@@ -378,7 +406,7 @@ def run_scheduler():
                             extra = f"\n\n☕ Перемена до {next_lesson.get('startLessonTime', '?')}\n\n{next_info}"
                         else:
                             extra = "\n\n🎉 На сегодня пар больше нет! Хорошего дня!"
-                        send_tg(chat_id, f"✅ Пара окончена!\n\n{info}{extra}", parse_mode="Markdown")
+                        _send(chat_id, teacher_id, f"✅ Пара окончена!\n\n{info}{extra}", parse_mode="Markdown", key=f"end_{end_min}")
 
         except Exception as e:
             print(f"Scheduler error: {e}")
