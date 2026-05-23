@@ -108,5 +108,24 @@ class Database:
         rows = resp.json() if resp.status_code == 200 else []
         return rows[0]["schedule_data"] if rows else None
 
+    def mark_notification_sent(self, teacher_url_id: str, ntype: str, minute: int):
+        self._request("POST", "sent_notifications", params={"on_conflict": "teacher_url_id,notification_type,notification_minute"}, data=[{
+            "teacher_url_id": teacher_url_id,
+            "notification_type": ntype,
+            "notification_minute": minute,
+        }])
+
+    def notification_already_sent(self, teacher_url_id: str, ntype: str, minute: int) -> bool:
+        resp = self._request("GET", "sent_notifications", params={
+            "teacher_url_id": f"eq.{teacher_url_id}",
+            "notification_type": f"eq.{ntype}",
+            "notification_minute": f"eq.{minute}",
+            "select": "teacher_url_id",
+        })
+        if resp is None:
+            return False
+        rows = resp.json() if resp.status_code == 200 else []
+        return len(rows) > 0
+
     def log_notification(self, chat_id: int, ntype: str, message: str):
         pass
